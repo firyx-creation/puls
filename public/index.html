@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0d0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="puls." />
+  <title>puls.</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     ÉCRAN : SETUP (premier lancement)
+═══════════════════════════════════════════ -->
+<div id="screen-setup" class="screen active">
+  <div class="setup-wrap">
+    <div class="logo-block">
+      <span class="logo-text">puls<span class="logo-dot">.</span></span>
+      <p class="logo-sub">Ton espace, tes annonces.</p>
+    </div>
+
+    <div class="card">
+      <label class="field-label">Ton pseudo</label>
+      <input id="inp-pseudo" class="field-input" type="text" placeholder="ex: streamer_alex" maxlength="30" autocomplete="off" />
+    </div>
+
+    <div class="card">
+      <label class="field-label">Tes préférences <span class="field-hint">(choisis ce qui t'intéresse)</span></label>
+      <div class="prefs-grid" id="prefs-grid">
+        <button class="pref-chip sel" data-theme="live">🔴 Live</button>
+        <button class="pref-chip" data-theme="video">🎬 Vidéo</button>
+        <button class="pref-chip" data-theme="short">⚡ Short</button>
+        <button class="pref-chip" data-theme="event">📅 Événement</button>
+        <button class="pref-chip" data-theme="game">🎮 Jouer avec moi</button>
+        <button class="pref-chip" data-theme="creation">🎨 Création</button>
+        <button class="pref-chip" data-theme="invite">📨 Invitation</button>
+        <button class="pref-chip" data-theme="other">💬 Autre</button>
+      </div>
+    </div>
+
+    <div class="card notif-card" id="notif-card">
+      <div class="notif-row">
+        <div>
+          <div class="field-label">Notifications push</div>
+          <div class="field-hint">Reçois les alertes via l'app ntfy (gratuite)</div>
+        </div>
+        <label class="toggle-wrap">
+          <input type="checkbox" id="toggle-notif" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div id="notif-status" class="notif-status"></div>
+    </div>
+
+    <button class="btn-primary" id="btn-start">Commencer →</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     ÉCRAN : FIL D'ACTUALITÉ
+═══════════════════════════════════════════ -->
+<div id="screen-feed" class="screen">
+  <header class="topbar">
+    <span class="logo-text sm">puls<span class="logo-dot">.</span></span>
+    <div class="topbar-right">
+      <button class="icon-btn" id="btn-filter" title="Filtrer">⚙</button>
+      <button class="icon-btn" id="btn-goto-compose" title="Créer un post">＋</button>
+    </div>
+  </header>
+
+  <div id="filter-panel" class="filter-panel hidden">
+    <div class="filter-title">Thèmes affichés</div>
+    <div id="filter-chips" class="theme-chips"></div>
+    <button class="btn-small" id="btn-add-theme">+ Ajouter un thème</button>
+  </div>
+
+  <div id="feed-list" class="feed-list">
+    <div class="feed-empty">Chargement des posts...</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     ÉCRAN : COMPOSER UN POST (admin)
+═══════════════════════════════════════════ -->
+<div id="screen-compose" class="screen">
+  <header class="topbar">
+    <button class="icon-btn" id="btn-back-feed">←</button>
+    <span class="topbar-title">Nouveau post</span>
+    <div></div>
+  </header>
+
+  <div class="compose-wrap">
+    <div class="card">
+      <label class="field-label">Titre <span class="req">*</span></label>
+      <input id="inp-title" class="field-input" type="text" placeholder="Titre de ton annonce..." maxlength="80" />
+    </div>
+
+    <div class="card">
+      <label class="field-label">Description</label>
+      <textarea id="inp-desc" class="field-textarea" placeholder="Plus de détails..." rows="3"></textarea>
+    </div>
+
+    <div class="card">
+      <label class="field-label">Thème <span class="req">*</span></label>
+      <div class="theme-chips" id="compose-themes">
+        <button class="theme-chip active" data-theme="live">🔴 Live</button>
+        <button class="theme-chip" data-theme="video">🎬 Vidéo</button>
+        <button class="theme-chip" data-theme="short">⚡ Short</button>
+        <button class="theme-chip" data-theme="event">📅 Événement</button>
+        <button class="theme-chip" data-theme="game">🎮 Jeu</button>
+        <button class="theme-chip" data-theme="creation">🎨 Création</button>
+        <button class="theme-chip" data-theme="invite">📨 Invitation</button>
+        <button class="theme-chip" data-theme="other">💬 Autre</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="field-label">Image (optionnel)</label>
+      <div class="img-drop" id="img-drop">
+        <input type="file" id="inp-image" accept="image/*" style="display:none" />
+        <div id="img-preview" class="img-preview-placeholder">
+          <span>Appuie pour choisir une image</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="field-label">Timer</label>
+      <div class="seg-control" id="timer-type">
+        <button class="seg active" data-val="none">Aucun</button>
+        <button class="seg" data-val="countdown">Commence dans...</button>
+        <button class="seg" data-val="remaining">Temps restant</button>
+      </div>
+      <div id="timer-date-wrap" class="hidden mt10">
+        <input id="inp-timer-date" class="field-input" type="datetime-local" />
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="field-label">Publication</label>
+      <div class="seg-control" id="sched-type">
+        <button class="seg active" data-val="now">Maintenant</button>
+        <button class="seg" data-val="later">Programmer</button>
+      </div>
+      <div id="sched-date-wrap" class="hidden mt10">
+        <input id="inp-sched-date" class="field-input" type="datetime-local" />
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="notif-row">
+        <div>
+          <div class="field-label">Notifier les abonnés</div>
+          <div class="field-hint">Envoie une notification push via ntfy</div>
+        </div>
+        <label class="toggle-wrap">
+          <input type="checkbox" id="toggle-push" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <button class="btn-primary" id="btn-publish">Publier</button>
+    <div id="publish-status" class="publish-status"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MODAL : Ajouter un thème
+═══════════════════════════════════════════ -->
+<div id="modal-theme" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-title">Ajouter un thème</div>
+    <div class="theme-chips" id="modal-theme-chips"></div>
+    <button class="btn-small danger" id="btn-close-modal">Fermer</button>
+  </div>
+</div>
+
+<!-- Supabase SDK (CDN, gratuit) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<!-- App -->
+<script src="/js/config.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
