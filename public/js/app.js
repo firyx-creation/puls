@@ -655,32 +655,22 @@ function escHtml(str) {
 async function sendOneSignalNotification(post) {
   const themeLabel = ALL_THEMES.find(t => t.id === post.theme)?.label || post.theme;
 
-  const body = {
-    app_id: ONESIGNAL_APP_ID,
-    // Le message qui s'affiche sur le téléphone
-    headings: { "en": "puls. — " + themeLabel, "fr": "puls. — " + themeLabel },
-    contents: { "en": post.title, "fr": post.title },
-    // Lien qui s'ouvre quand on clique sur la notif
-    url: window.location.origin,
-    // Filtrage : On envoie seulement à ceux qui suivent ce thème
-    filters: [
-      { "field": "tag", "key": post.theme, "relation": "=", "value": "true" }
-    ]
-  };
-
   try {
-    const response = await fetch("https://onesignal.com/api/v1/notifications", {
+    // On appelle notre PROPRE API sur Vercel (pas de CORS ici)
+    const response = await fetch("/api/send-push", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Authorization": "Basic " + ONESIGNAL_REST_KEY
-      },
-      body: JSON.stringify(body)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: post.title,
+        theme: post.theme,
+        themeLabel: themeLabel
+      })
     });
+
     const resData = await response.json();
-    console.log("Retour OneSignal:", resData);
+    console.log("Notification envoyée via Vercel :", resData);
   } catch (err) {
-    console.error("Erreur envoi OneSignal:", err);
+    console.error("Erreur d'appel à l'API Vercel :", err);
   }
 }
 // ── Boot ──
