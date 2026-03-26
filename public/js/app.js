@@ -36,14 +36,24 @@ function showScreen(id) {
 //  SETUP
 // ══════════════════════════════════════
 function initSetup() {
+  console.log("initSetup démarré", STATE.pseudo, STATE.prefs);
+  if (!Array.isArray(STATE.prefs)) STATE.prefs = [];
+
   if (STATE.pseudo) { startApp(); return; }
+
+  const btnStart = document.getElementById("btn-start");
+  if (!btnStart) {
+    console.error("btn-start introuvable");
+    return;
+  }
 
   document.querySelectorAll("#prefs-grid .pref-chip").forEach(chip => {
     if (STATE.prefs.includes(chip.dataset.theme)) chip.classList.add("sel");
     chip.addEventListener("click", () => chip.classList.toggle("sel"));
   });
 
-  document.getElementById("btn-start").addEventListener("click", async () => {
+  btnStart.addEventListener("click", async () => {
+    console.log("clic btn-start");
     const pseudo = document.getElementById("inp-pseudo").value.trim();
     if (!pseudo) { alert("Choisis un pseudo !"); return; }
     
