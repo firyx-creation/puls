@@ -15,6 +15,7 @@
   <!-- SDK OneSignal v16 -->
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 </head>
+
 <body>
   <script>
     window.OneSignalDeferred = window.OneSignalDeferred || [];
@@ -79,6 +80,12 @@
 ═══════════════════════════════════════════ -->
 <div id="screen-feed" class="screen">
   <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo-text sm">puls<span class="logo-dot">.</span></span>
+      <span id="user-online-tag" class="online-tag">● <span id="user-count">1</span></span>
+    </div>
+
+
     <span class="logo-text sm">puls<span class="logo-dot">.</span></span>
     <div class="topbar-right">
       <button class="icon-btn" id="btn-filter" title="Filtrer">⚙</button>

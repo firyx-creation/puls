@@ -2,8 +2,13 @@ export default async function handler(req, res) {
   // On récupère les données envoyées par ton app
   const { title, theme, themeLabel } = req.body;
 
-  const ONESIGNAL_APP_ID = "fa5e5464-d139-4d38-b9d8-438d9f753375";
-  const ONESIGNAL_REST_KEY = "os_v2_app_7jpfizgrhfgtrooyiogz65jtowbxkbdn5wdemvv5h4tjquv62hyqwjyilns3765bnse3ms23fekbn6aichbfdz2dzoxkjtqnt77c4lq"; // <--- METS TA CLÉ ICI
+  // Récupère les clés depuis les variables d'environnement
+  const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
+  const ONESIGNAL_REST_KEY = process.env.ONESIGNAL_REST_KEY;
+
+  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_KEY) {
+    return res.status(500).json({ error: "Variables d'environnement OneSignal manquantes" });
+  }
 
   const body = {
     app_id: ONESIGNAL_APP_ID,

@@ -116,12 +116,82 @@ exports.publishScheduledPosts = functions.pubsub
       .get();
 
     for (const doc of snap.docs) {
+      const post = doc.data();
+      
       // Marque comme notifié pour ne pas renvoyer
       await doc.ref.update({ notified: true });
-      // La Cloud Function onCreate ne se déclenche pas ici (post déjà créé)
-      // On appelle manuellement la logique de notification
-      // (tu peux factoriser la logique en une fonction partagée)
+      
+      // Envoie les notifications si le post les demande
+      if (post.notify) {
+        try {
+          // Récupère les abonnés du thème
+          const theme = post.theme || "other";
+          const title = `puls. — ${themeLabel(theme)}`;
+          const body = post.title || "Nouveau contenu disponible !";
+
+          const tokensSnap = await db.collection("fcm_tokens")
+            .where("prefs", "array-contains", theme)
+            .get();
+
+          if (tokensSnap.empty) {
+            console.log("Aucun abonné pour le thème schedulé:", theme);
+            return;
+          }
+
+          const tokens = tokensSnap.docs.map(d => d.data().token).filter(Boolean);
+          if (tokens.length === 0) return;
+
+          console.log(`Envoi de ${tokens.length} notifications pour post schedulé (thème ${theme})...`);
+
+          // Envoie par lots de 500
+          const chunks = chunkArray(tokens, 500);
+          for (const chunk of chunks) {
+            const message = {
+              notification: { title, body },
+              data: {
+                postId: doc.id,
+                theme,
+                url: "/",
+              },
+              tokens: chunk,
+              webpush: {
+                notification: {
+                  title,
+                  body,
+                  icon: "/icons/icon-192.png",
+                  badge: "/icons/icon-192.png",
+                  vibrate: [200, 100, 200],
+                },
+                fcmOptions: { link: "/" },
+              },
+            };
+
+            const response = await admin.messaging().sendEachForMulticast(message);
+            console.log(`Succès: ${response.successCount}, Échec: ${response.failureCount}`);
+
+            // Nettoie les tokens invalides
+            const invalid = [];
+            response.responses.forEach((r, i) => {
+              if (!r.success && r.error?.code === "messaging/registration-token-not-registered") {
+                invalid.push(chunk[i]);
+              }
+            });
+            if (invalid.length > 0) {
+              const batch = db.batch();
+              invalid.forEach(token => {
+                const ref = db.collection("fcm_tokens").doc(token);
+                batch.delete(ref);
+              });
+              await batch.commit();
+              console.log(`${invalid.length} tokens invalides supprimés.`);
+            }
+          }
+        } catch (err) {
+          console.error("Erreur lors de l'envoi des notifications programmées:", err);
+        }
+      }
     }
+    
     return null;
   });
 

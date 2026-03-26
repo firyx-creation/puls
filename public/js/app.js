@@ -154,6 +154,19 @@ function startApp() {
   initFeed();
   initCompose();
   showInstallBanner();
+  // Détection du nombre de personnes en ligne
+  const presenceChannel = db.channel('online-users');
+  presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      const newState = presenceChannel.presenceState();
+      const count = Object.keys(newState).length;
+      document.getElementById('user-count').textContent = count;
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await presenceChannel.track({ online_at: new Date().toISOString(), user: STATE.pseudo });
+      }
+    });
 }
 
 // ══════════════════════════════════════
@@ -215,6 +228,22 @@ function subscribeFeed() {
         await loadInitialPosts();
       }
     });
+    // Écouter les likes
+  db.channel('likes-updates')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, payload => {
+      const pId = payload.new.post_id || payload.old.post_id;
+      loadStats(pId);
+    })
+    .subscribe();
+
+  // Écouter les réponses
+  db.channel('replies-updates')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_replies' }, payload => {
+      loadStats(payload.new.post_id);
+      // On ouvre la section des réponses automatiquement pour voir le nouveau message
+      document.getElementById(`reply-box-${payload.new.post_id}`).classList.remove('hidden');
+    })
+    .subscribe();
 }
 
 async function loadInitialPosts() {
@@ -258,57 +287,43 @@ function renderFeedFromCache() {
 
 function renderPostCard(post) {
   const theme = ALL_THEMES.find(t => t.id === post.theme);
-  const isNew = !STATE.seenPosts.has(post.id);
-  if (isNew) {
-    STATE.seenPosts.add(post.id);
-    localStorage.setItem("puls_seen", JSON.stringify([...STATE.seenPosts]));
-  }
-
   const timeAgo = formatTimeAgo(new Date(post.created_at));
-  const badgeClass = `badge-${post.theme}`;
   
-  let timerHtml = "";
-  if (post.timer_type && post.timer_type !== "none" && post.timer_target) {
-    const targetTime = new Date(post.timer_target).getTime();
-    const now = Date.now();
-    const diff = targetTime - now;
-    
-    const label = post.timer_type === "countdown" ? "Commence dans" : "Temps restant";
-    const value = diff > 0 
-      ? `<span class="timer-value" data-timer="${post.id}" data-target="${targetTime}">${formatDuration(diff)}</span>`
-      : `<span class="timer-value ended">Terminé</span>`;
-    
-    timerHtml = `
-      <div class="post-timer">
-        <div>
-          <div class="timer-label">${escHtml(label)}</div>
-          ${value}
-        </div>
-      </div>`;
-  }
-
-  const imageHtml = post.image_url 
-    ? `<img src="${escHtml(post.image_url)}" class="post-image" alt="" loading="lazy" />`
-    : "";
+  // On génère un ID unique pour la zone de commentaires
+  const cardId = `post-${post.id}`;
 
   return `
-    <div class="post-card">
+    <div class="post-card" id="${cardId}">
       <div class="post-card-header">
-        <span class="post-badge ${badgeClass}">${escHtml(theme?.label || post.theme)}</span>
-        ${isNew ? '<span class="post-new-dot"></span>' : ''}
+        <span class="post-badge badge-${post.theme}">${escHtml(theme?.label || post.theme)}</span>
         <span class="post-meta">${timeAgo}</span>
       </div>
       <div class="post-card-body">
         <div class="post-title">${escHtml(post.title)}</div>
         ${post.description ? `<div class="post-desc">${escHtml(post.description)}</div>` : ''}
-        ${imageHtml}
-        ${timerHtml}
+        ${post.image_url ? `<img src="${post.image_url}" class="post-image" />` : ''}
       </div>
-      <div class="post-card-footer">
-        <div class="post-author">Par ${escHtml(post.author)}</div>
+      
+      <div class="post-actions">
+        <button class="action-btn" onclick="toggleLike('${post.id}')" id="like-btn-${post.id}">
+          ❤️ <span id="like-count-${post.id}">0</span>
+        </button>
+        <button class="action-btn" onclick="document.getElementById('reply-box-${post.id}').classList.toggle('hidden')">
+          💬 Répondre
+        </button>
+      </div>
+
+      <div id="reply-box-${post.id}" class="replies-section hidden">
+        <div id="replies-list-${post.id}"></div>
+        <div class="reply-input-wrap">
+          <input type="text" id="inp-reply-${post.id}" class="field-input" placeholder="Ta réponse..." />
+          <button class="btn-small" onclick="sendReply('${post.id}')">Envoyer</button>
+        </div>
       </div>
     </div>`;
 }
+
+
 
 function startTimers() {
   // Nettoyer les anciens timers
@@ -648,6 +663,47 @@ function escHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+// --- FONCTION LIKE ---
+async function toggleLike(postId) {
+  const { data, error } = await db.from('post_likes').insert({ post_id: postId, pseudo: STATE.pseudo });
+  if (error && error.code === '23505') { // Déjà liké -> on l'enlève
+    await db.from('post_likes').delete().match({ post_id: postId, pseudo: STATE.pseudo });
+  }
+  loadStats(postId);
+}
 
+// --- FONCTION RÉPONDRE ---
+async function sendReply(postId) {
+  const inp = document.getElementById(`inp-reply-${postId}`);
+  const text = inp.value.trim();
+  if (!text) return;
+
+  await db.from('post_replies').insert({
+    post_id: postId,
+    author: STATE.pseudo,
+    content: text
+  });
+  
+  inp.value = "";
+  loadStats(postId);
+}
+
+// --- CHARGER LES LIKES ET RÉPONSES ---
+async function loadStats(postId) {
+  // Compter likes
+  const { count: likes } = await db.from('post_likes').select('*', { count: 'exact', head: true }).eq('post_id', postId);
+  document.getElementById(`like-count-${postId}`).textContent = likes || 0;
+
+  // Charger les réponses
+  const { data: replies } = await db.from('post_replies').select('*').eq('post_id', postId).order('created_at', { ascending: true });
+  const list = document.getElementById(`replies-list-${postId}`);
+  if (replies && replies.length > 0) {
+    list.innerHTML = replies.map(r => `
+      <div class="reply-item">
+        <span class="reply-author">${escHtml(r.author)}</span> ${escHtml(r.content)}
+      </div>
+    `).join('');
+  }
+}
 // ── Boot ──
 initSetup();
