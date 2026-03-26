@@ -321,7 +321,13 @@ function renderPostCard(post) {
         <button class="action-btn" onclick="document.getElementById('reply-box-${post.id}').classList.toggle('hidden')">
           💬 Répondre
         </button>
+        ${STATE.isAdmin ? `<button class="action-btn btn-delete" onclick="deletePost('${post.id}')">🗑️ Supprimer</button>` : ''}
       </div>
+      ${post.timer_type && post.timer_type !== 'none' && post.timer_target ? `
+      <div class="post-timer">
+        Timer: <span class="timer-value" id="timer-${post.id}" data-timer="${post.id}" data-target="${new Date(post.timer_target).getTime()}">calcul...</span>
+      </div>
+      ` : ''}
 
       <div id="reply-box-${post.id}" class="replies-section hidden">
         <div id="replies-list-${post.id}"></div>
@@ -714,6 +720,25 @@ async function sendReply(postId) {
 
   inp.value = "";
   loadStats(postId);
+}
+
+async function deletePost(postId) {
+  if (!STATE.isAdmin) {
+    console.warn('Suppression réservée à l\'admin');
+    return;
+  }
+
+  if (!confirm('Supprimer ce post définitivement ?')) return;
+
+  const { error } = await db.from('posts').delete().eq('id', postId);
+  if (error) {
+    console.error('Erreur suppression post :', error);
+    return;
+  }
+
+  _cachedPosts = _cachedPosts.filter(p => p.id !== postId);
+  renderFeedFromCache();
+  console.log('Post supprimé', postId);
 }
 
 // --- CHARGER LES LIKES ET RÉPONSES ---
