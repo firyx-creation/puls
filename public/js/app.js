@@ -678,12 +678,17 @@ async function sendReply(postId) {
   const text = inp.value.trim();
   if (!text) return;
 
-  await db.from('post_replies').insert({
+  const { error } = await db.from('post_replies').insert({
     post_id: postId,
-    author: STATE.pseudo,
+    pseudo: STATE.pseudo,
     content: text
   });
-  
+
+  if (error) {
+    console.error('Erreur insertion reply:', error);
+    return;
+  }
+
   inp.value = "";
   loadStats(postId);
 }
