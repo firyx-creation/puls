@@ -1,7 +1,12 @@
 // ═══════════════════════════════════════════════════════════════
-//  PULS. — APP.JS — Logique principale (Supabase + ntfy.sh)
-//  100% gratuit, aucune carte bancaire
+//  PULS. — APP.JS (VERSION SÉCURISÉE avec Vercel API)
+//  Utilise une API serverless pour cacher la clé OneSignal
 // ═══════════════════════════════════════════════════════════════
+
+// Pour utiliser cette version :
+// 1. Renomme ce fichier en "app.js"
+// 2. Déploie le dossier /api sur Vercel
+// 3. Configure les variables d'environnement Vercel
 
 // ── Init Supabase ──
 const { createClient } = supabase;
@@ -39,106 +44,94 @@ function initSetup() {
   });
 
   document.getElementById("btn-start").addEventListener("click", async () => {
-  const pseudo = document.getElementById("inp-pseudo").value.trim();
-  if (!pseudo) { alert("Choisis un pseudo !"); return; }
-  
-  const prefs = [...document.querySelectorAll("#prefs-grid .pref-chip.sel")]
-    .map(c => c.dataset.theme);
+    const pseudo = document.getElementById("inp-pseudo").value.trim();
+    if (!pseudo) { alert("Choisis un pseudo !"); return; }
     
-  if (prefs.length === 0) { alert("Choisis au moins une préférence !"); return; }
+    const prefs = [...document.querySelectorAll("#prefs-grid .pref-chip.sel")]
+      .map(c => c.dataset.theme);
+      
+    if (prefs.length === 0) { alert("Choisis au moins une préférence !"); return; }
 
-  // Sauvegarde locale
-  STATE.pseudo = pseudo;
-  STATE.prefs  = prefs;
-  localStorage.setItem("puls_pseudo", pseudo);
-  localStorage.setItem("puls_prefs",  JSON.stringify(prefs));
+    // Sauvegarde locale
+    STATE.pseudo = pseudo;
+    STATE.prefs  = prefs;
+    localStorage.setItem("puls_pseudo", pseudo);
+    localStorage.setItem("puls_prefs",  JSON.stringify(prefs));
 
-  // Envoi à Supabase
-  try {
-    await db.from("users").upsert({ pseudo, prefs, updated_at: new Date().toISOString() });
-  } catch(e) { console.error("Erreur Supabase:", e); }
+    // Envoi à Supabase
+    try {
+      await db.from("users").upsert({ 
+        pseudo, 
+        prefs, 
+        updated_at: new Date().toISOString() 
+      });
+    } catch(e) { 
+      console.error("Erreur Supabase:", e); 
+    }
 
-  // --- PARTIE ONESIGNAL ---
-  // On essaye d'activer les notifs, mais on ne bloque pas l'app si ça rate
-  if (document.getElementById("toggle-notif").checked) {
-    console.log("Activation OneSignal...");
-    updateOneSignalTags(prefs); 
-  }
+    // Configuration OneSignal
+    if (document.getElementById("toggle-notif").checked) {
+      setNotifStatus("Configuration des notifications...");
+      await setupOneSignalNotifications(pseudo, prefs);
+    }
 
-  // On lance l'app quoi qu'il arrive
-  startApp();
-});
+    // Lancement de l'app
+    startApp();
+  });
 }
 
+// ── Configuration OneSignal complète ──
+async function setupOneSignalNotifications(pseudo, prefs) {
+  return new Promise((resolve) => {
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      try {
+        // 1. Demander la permission
+        const permission = await OneSignal.Notifications.requestPermission();
+        
+        if (!permission) {
+          setNotifStatus("Notifications refusées", "err");
+          resolve(false);
+          return;
+        }
 
-// Fonction pour abonner l'utilisateur nativement
-async function setupNativeNotifications(pseudo, prefs) {
-  OneSignalDeferred.push(function(OneSignal) {
-    // 1. Demande la permission à l'iPhone
-    OneSignal.Notifications.requestPermission();
+        // 2. Définir les tags (pseudo + thèmes)
+        const tags = { pseudo };
+        ALL_THEMES.forEach(t => {
+          tags[t.id] = prefs.includes(t.id) ? "true" : "false";
+        });
 
-    // 2. On "Tag" l'utilisateur pour envoyer des messages ciblés plus tard
-    // On enregistre son pseudo et ses thèmes préférés chez OneSignal
-    OneSignal.User.addTag("pseudo", pseudo);
-    
-    prefs.forEach(p => {
-      OneSignal.User.addTag(p, "true"); // Ex: tag "live" = true
+        await OneSignal.User.addTags(tags);
+        
+        setNotifStatus("✓ Notifications activées", "ok");
+        console.log("OneSignal configuré avec tags:", tags);
+        resolve(true);
+        
+      } catch (err) {
+        console.error("Erreur OneSignal:", err);
+        setNotifStatus("Erreur : " + err.message, "err");
+        resolve(false);
+      }
     });
   });
 }
 
-function showNtfyInstructions(topics, prefs) {
-  // Affiche une modal expliquant comment installer ntfy
-  const topicList = prefs.map(p => {
-    const t = ALL_THEMES.find(x => x.id === p);
-    return `<li><strong>${t?.label || p}</strong> → <code>${NTFY_TOPICS[p]}</code></li>`;
-  }).join("");
-
-  const existingModal = document.getElementById("modal-ntfy");
-  if (existingModal) existingModal.remove();
-
-  const modal = document.createElement("div");
-  modal.id = "modal-ntfy";
-  modal.className = "modal-backdrop";
-  modal.innerHTML = `
-    <div class="modal" style="max-width:420px">
-      <div class="modal-title">📲 Activer les notifications</div>
-      <p style="color:var(--txt2);font-size:13px;margin-bottom:12px;">
-        Installe l'app <strong>ntfy</strong> (gratuite) pour recevoir les notifications push
-        sur Android, iOS ou Windows — sans compte, sans CB.
-      </p>
-      <div class="ntfy-steps">
-        <div class="ntfy-step">
-          <span class="ntfy-step-num">1</span>
-          <div>
-            <div class="ntfy-step-title">Installe ntfy</div>
-            <div class="ntfy-step-desc">
-              Android : <a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" class="link">Play Store</a> ou <a href="https://f-droid.org/en/packages/io.heckel.ntfy/" target="_blank" class="link">F-Droid</a><br>
-              iOS : <a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" class="link">App Store</a><br>
-              Windows/Linux : <a href="https://ntfy.sh/app" target="_blank" class="link">App Web</a> ou <a href="https://github.com/binwiederhier/ntfy/releases" target="_blank" class="link">Desktop</a>
-            </div>
-          </div>
-        </div>
-        <div class="ntfy-step">
-          <span class="ntfy-step-num">2</span>
-          <div>
-            <div class="ntfy-step-title">Abonne-toi à tes thèmes</div>
-            <div class="ntfy-step-desc">Dans ntfy, clique "+" et ajoute ces topics :</div>
-            <ul class="ntfy-topics-list">${topicList}</ul>
-          </div>
-        </div>
-        <div class="ntfy-step">
-          <span class="ntfy-step-num">3</span>
-          <div>
-            <div class="ntfy-step-title">C'est tout !</div>
-            <div class="ntfy-step-desc">Tu recevras une notification dès qu'un post est publié sur un thème que tu suis.</div>
-          </div>
-        </div>
-      </div>
-      <button class="btn-primary" id="btn-close-ntfy" style="margin-top:16px">Compris !</button>
-    </div>`;
-  document.body.appendChild(modal);
-  document.getElementById("btn-close-ntfy").addEventListener("click", () => modal.remove());
+// ── Mettre à jour les tags OneSignal ──
+function updateOneSignalTags(prefs) {
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    try {
+      const tags = {};
+      ALL_THEMES.forEach(t => {
+        tags[t.id] = prefs.includes(t.id) ? "true" : "false";
+      });
+      
+      await OneSignal.User.addTags(tags);
+      console.log("Tags OneSignal mis à jour:", tags);
+    } catch (err) {
+      console.error("Erreur mise à jour tags:", err);
+    }
+  });
 }
 
 function setNotifStatus(msg, type) {
@@ -151,33 +144,12 @@ function setNotifStatus(msg, type) {
 // ══════════════════════════════════════
 //  DÉMARRAGE APP
 // ══════════════════════════════════════
-function updateOneSignalTags(prefs) {
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  OneSignalDeferred.push(async function(OneSignal) {
-    try {
-      // 1. Demande de permission (fenêtre Safari)
-      await OneSignal.Notifications.requestPermission();
-
-      // 2. Préparation des tags
-      const tags = {};
-      ALL_THEMES.forEach(t => {
-        tags[t.id] = prefs.includes(t.id) ? "true" : "false";
-      });
-
-      // 3. Envoi des tags
-      console.log("Envoi des tags OneSignal:", tags);
-      await OneSignal.User.addTags(tags);
-    } catch (err) {
-      console.error("Erreur OneSignal dans updateOneSignalTags:", err);
-    }
-  });
-}
-
 function startApp() {
   STATE.isAdmin = STATE.pseudo === ADMIN_PSEUDO;
   const btnCompose = document.getElementById("btn-goto-compose");
   if (!STATE.isAdmin) btnCompose.style.display = "none";
-  updateOneSignalTags(STATE.prefs)
+  
+  updateOneSignalTags(STATE.prefs);
   showScreen("feed");
   initFeed();
   initCompose();
@@ -227,196 +199,189 @@ function subscribeFeed() {
 
   const now = new Date().toISOString();
 
-  // Charge les posts initiaux
-  loadPosts(now);
-
-  // Écoute en temps réel les nouveaux posts via Supabase Realtime
-  const channel = db.channel("posts-feed")
-    .on("postgres_changes", {
-      event: "INSERT",
-      schema: "public",
-      table: "posts",
-    }, payload => {
-      const post = payload.new;
-      const publishAt = new Date(post.publish_at);
-      const delay = publishAt.getTime() - Date.now();
-
-      if (delay <= 0) {
-        _cachedPosts.unshift(post);
+  STATE.unsubFeed = db
+    .channel("posts_feed")
+    .on("postgres_changes", 
+      { event: "INSERT", schema: "public", table: "posts" },
+      (payload) => {
+        console.log("Nouveau post détecté:", payload.new);
+        _cachedPosts.unshift(payload.new);
         renderFeedFromCache();
-      } else if (delay < 86400000) {
-        setTimeout(() => {
-          _cachedPosts.unshift(post);
-          renderFeedFromCache();
-        }, delay);
       }
-    })
-    .subscribe();
-
-  STATE.unsubFeed = channel;
+    )
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        console.log("Abonné au feed en temps réel");
+        await loadInitialPosts();
+      }
+    });
 }
 
-async function loadPosts(now) {
-  const { data, error } = await db
-    .from("posts")
-    .select("*")
-    .lte("publish_at", now)
-    .order("publish_at", { ascending: false })
-    .limit(50);
+async function loadInitialPosts() {
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await db
+      .from("posts")
+      .select("*")
+      .lte("publish_at", now)
+      .order("created_at", { ascending: false })
+      .limit(50);
 
-  if (error) { console.error("Feed error:", error); return; }
-  _cachedPosts = data || [];
-  renderFeedFromCache();
-}
-
-function getActiveFilters() {
-  return [...document.querySelectorAll("#filter-chips .theme-chip.active")]
-    .map(c => c.dataset.theme);
+    if (error) throw error;
+    _cachedPosts = data || [];
+    renderFeedFromCache();
+  } catch (e) {
+    console.error("Erreur chargement posts:", e);
+    document.getElementById("feed-list").innerHTML = 
+      '<div class="feed-empty">Erreur de chargement...</div>';
+  }
 }
 
 function renderFeedFromCache() {
-  const filters = getActiveFilters();
-  const list = document.getElementById("feed-list");
+  const activeFilters = [...document.querySelectorAll("#filter-chips .theme-chip.active")]
+    .map(c => c.dataset.theme);
 
-  Object.values(STATE.timers).forEach(clearInterval);
-  STATE.timers = {};
+  const filtered = _cachedPosts.filter(p => {
+    if (activeFilters.length > 0 && !activeFilters.includes(p.theme)) return false;
+    return true;
+  });
 
-  const filtered = filters.length === 0
-    ? _cachedPosts
-    : _cachedPosts.filter(p => filters.includes(p.theme));
-
+  const feedList = document.getElementById("feed-list");
   if (filtered.length === 0) {
-    list.innerHTML = '<div class="feed-empty">Aucun post pour tes thèmes actuels.</div>';
+    feedList.innerHTML = '<div class="feed-empty">Aucun post à afficher</div>';
     return;
   }
 
-  list.innerHTML = "";
-  filtered.forEach(post => {
-    const card = buildPostCard(post);
-    list.appendChild(card);
-    if (post.timer_type && post.timer_type !== "none") {
-      startPostTimer(post);
-    }
-    setTimeout(() => {
-      STATE.seenPosts.add(post.id);
-      localStorage.setItem("puls_seen", JSON.stringify([...STATE.seenPosts]));
-    }, 2000);
-  });
+  feedList.innerHTML = filtered.map(p => renderPostCard(p)).join("");
+  startTimers();
 }
 
-function buildPostCard(post) {
-  const card = document.createElement("div");
-  card.className = "post-card";
-  card.dataset.postId = post.id;
-
+function renderPostCard(post) {
+  const theme = ALL_THEMES.find(t => t.id === post.theme);
   const isNew = !STATE.seenPosts.has(post.id);
-  const badgeClass = "badge-" + (post.theme || "other");
-  const themeLabel = ALL_THEMES.find(t => t.id === post.theme)?.label || post.theme;
-  const timeAgo = formatTimeAgo(new Date(post.publish_at));
-  const authorHtml = post.author
-    ? `<div class="post-author">@${escHtml(post.author)} · ${timeAgo}</div>`
-    : `<div class="post-author">${timeAgo}</div>`;
-
-  let imageHtml = "";
-  if (post.image_url) {
-    imageHtml = `<img class="post-image" src="${post.image_url}" alt="" loading="lazy" />`;
+  if (isNew) {
+    STATE.seenPosts.add(post.id);
+    localStorage.setItem("puls_seen", JSON.stringify([...STATE.seenPosts]));
   }
 
+  const timeAgo = formatTimeAgo(new Date(post.created_at));
+  const badgeClass = `badge-${post.theme}`;
+  
   let timerHtml = "";
-  if (post.timer_type && post.timer_type !== "none") {
+  if (post.timer_type && post.timer_type !== "none" && post.timer_target) {
+    const targetTime = new Date(post.timer_target).getTime();
+    const now = Date.now();
+    const diff = targetTime - now;
+    
     const label = post.timer_type === "countdown" ? "Commence dans" : "Temps restant";
+    const value = diff > 0 
+      ? `<span class="timer-value" data-timer="${post.id}" data-target="${targetTime}">${formatDuration(diff)}</span>`
+      : `<span class="timer-value ended">Terminé</span>`;
+    
     timerHtml = `
       <div class="post-timer">
         <div>
-          <div class="timer-label">${label}</div>
-          <div class="timer-value" id="timer-${post.id}">--:--:--</div>
+          <div class="timer-label">${escHtml(label)}</div>
+          ${value}
         </div>
-        <div style="font-size:10px;color:var(--txt3);text-align:right;">j·h·m·s</div>
       </div>`;
   }
 
-  card.innerHTML = `
-    <div class="post-card-header">
-      <span class="post-badge ${badgeClass}">${themeLabel}</span>
-      ${isNew ? '<div class="post-new-dot"></div>' : ''}
-      <span class="post-meta">${timeAgo}</span>
-    </div>
-    <div class="post-card-body">
-      <div class="post-title">${escHtml(post.title)}</div>
-      ${post.description ? `<div class="post-desc">${escHtml(post.description)}</div>` : ""}
-      ${imageHtml}
-      ${timerHtml}
-    </div>
-    <div class="post-card-footer">
-      ${authorHtml}
-    </div>`;
+  const imageHtml = post.image_url 
+    ? `<img src="${escHtml(post.image_url)}" class="post-image" alt="" loading="lazy" />`
+    : "";
 
-  return card;
+  return `
+    <div class="post-card">
+      <div class="post-card-header">
+        <span class="post-badge ${badgeClass}">${escHtml(theme?.label || post.theme)}</span>
+        ${isNew ? '<span class="post-new-dot"></span>' : ''}
+        <span class="post-meta">${timeAgo}</span>
+      </div>
+      <div class="post-card-body">
+        <div class="post-title">${escHtml(post.title)}</div>
+        ${post.description ? `<div class="post-desc">${escHtml(post.description)}</div>` : ''}
+        ${imageHtml}
+        ${timerHtml}
+      </div>
+      <div class="post-card-footer">
+        <div class="post-author">Par ${escHtml(post.author)}</div>
+      </div>
+    </div>`;
 }
 
-function startPostTimer(post) {
-  if (!post.timer_target) return;
-  const targetDate = new Date(post.timer_target);
+function startTimers() {
+  // Nettoyer les anciens timers
+  Object.values(STATE.timers).forEach(t => clearInterval(t));
+  STATE.timers = {};
 
-  const update = () => {
-    const el = document.getElementById("timer-" + post.id);
-    if (!el) { clearInterval(STATE.timers[post.id]); return; }
+  document.querySelectorAll("[data-timer]").forEach(el => {
+    const id = el.dataset.timer;
+    const target = parseInt(el.dataset.target, 10);
 
-    const now = Date.now();
-    const target = targetDate.getTime();
-
-    if (post.timer_type === "remaining") {
-      const rem = target - now;
-      if (rem <= 0) { el.textContent = "Terminé"; el.className = "timer-value ended"; return; }
-      el.textContent = formatDuration(rem);
-    } else {
-      const diff = target - now;
-      if (diff <= 0) { el.textContent = "C'est parti !"; el.className = "timer-value live"; return; }
-      el.textContent = formatDuration(diff);
-    }
-  };
-
-  update();
-  STATE.timers[post.id] = setInterval(update, 1000);
+    STATE.timers[id] = setInterval(() => {
+      const diff = target - Date.now();
+      if (diff <= 0) {
+        el.textContent = "Terminé";
+        el.className = "timer-value ended";
+        clearInterval(STATE.timers[id]);
+      } else {
+        el.textContent = formatDuration(diff);
+      }
+    }, 1000);
+  });
 }
 
 // ══════════════════════════════════════
-//  THEME MODAL
+//  MODAL THÈME
 // ══════════════════════════════════════
 function openThemeModal() {
-  const wrap = document.getElementById("modal-theme-chips");
-  wrap.innerHTML = "";
+  const modal = document.getElementById("modal-theme");
+  const chips = document.getElementById("modal-theme-chips");
+  
+  chips.innerHTML = "";
   ALL_THEMES.forEach(t => {
+    if (STATE.prefs.includes(t.id)) return;
     const btn = document.createElement("button");
-    btn.className = "theme-chip" + (STATE.prefs.includes(t.id) ? " active" : "");
+    btn.className = "theme-chip";
     btn.textContent = t.label;
     btn.addEventListener("click", async () => {
-      btn.classList.toggle("active");
-      const idx = STATE.prefs.indexOf(t.id);
-      if (idx >= 0) STATE.prefs.splice(idx, 1);
-      else STATE.prefs.push(t.id);
+      STATE.prefs.push(t.id);
       localStorage.setItem("puls_prefs", JSON.stringify(STATE.prefs));
-      await db.from("users").upsert({ pseudo: STATE.pseudo, prefs: STATE.prefs, updated_at: new Date().toISOString() });
+      await db.from("users").upsert({ 
+        pseudo: STATE.pseudo, 
+        prefs: STATE.prefs,
+        updated_at: new Date().toISOString()
+      });
+      updateOneSignalTags(STATE.prefs);
       renderFilterChips();
+      modal.classList.add("hidden");
     });
-    wrap.appendChild(btn);
+    chips.appendChild(btn);
   });
-  document.getElementById("modal-theme").classList.remove("hidden");
+
+  modal.classList.remove("hidden");
 }
 
 document.getElementById("btn-close-modal").addEventListener("click", () => {
   document.getElementById("modal-theme").classList.add("hidden");
 });
-document.getElementById("modal-theme").addEventListener("click", e => {
-  if (e.target === e.currentTarget) e.currentTarget.classList.add("hidden");
+
+document.getElementById("modal-theme").addEventListener("click", (e) => {
+  if (e.target.id === "modal-theme") {
+    e.target.classList.add("hidden");
+  }
 });
 
 // ══════════════════════════════════════
-//  COMPOSE (admin uniquement)
+//  COMPOSE (ADMIN)
 // ══════════════════════════════════════
 function initCompose() {
-  document.getElementById("btn-back-feed").addEventListener("click", () => showScreen("feed"));
+  document.getElementById("btn-back-feed").addEventListener("click", () => {
+    showScreen("feed");
+  });
 
+  // Sélection thème
   document.querySelectorAll("#compose-themes .theme-chip").forEach(chip => {
     chip.addEventListener("click", () => {
       document.querySelectorAll("#compose-themes .theme-chip").forEach(c => c.classList.remove("active"));
@@ -425,17 +390,26 @@ function initCompose() {
     });
   });
 
-  document.getElementById("img-drop").addEventListener("click", () => {
-    document.getElementById("inp-image").click();
-  });
-  document.getElementById("inp-image").addEventListener("change", e => {
+  // Upload image
+  const imgDrop = document.getElementById("img-drop");
+  const imgInput = document.getElementById("inp-image");
+  const imgPreview = document.getElementById("img-preview");
+
+  imgDrop.addEventListener("click", () => imgInput.click());
+  
+  imgInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
     STATE.selectedImage = file;
-    const url = URL.createObjectURL(file);
-    document.getElementById("img-preview").innerHTML = `<img class="img-preview-actual" src="${url}" />`;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      imgPreview.innerHTML = `<img src="${ev.target.result}" class="img-preview-actual" alt="Preview" />`;
+    };
+    reader.readAsDataURL(file);
   });
 
+  // Timer type
   document.querySelectorAll("#timer-type .seg").forEach(seg => {
     seg.addEventListener("click", () => {
       document.querySelectorAll("#timer-type .seg").forEach(s => s.classList.remove("active"));
@@ -445,6 +419,7 @@ function initCompose() {
     });
   });
 
+  // Schedule type
   document.querySelectorAll("#sched-type .seg").forEach(seg => {
     seg.addEventListener("click", () => {
       document.querySelectorAll("#sched-type .seg").forEach(s => s.classList.remove("active"));
@@ -464,7 +439,10 @@ async function publishPost() {
   const desc  = document.getElementById("inp-desc").value.trim();
   const notifyUsers = document.getElementById("toggle-push").checked;
 
-  if (!title) { setPublishStatus("Titre requis.", "err"); return; }
+  if (!title) { 
+    setPublishStatus("Titre requis.", "err"); 
+    return; 
+  }
 
   const btn = document.getElementById("btn-publish");
   btn.disabled = true;
@@ -489,14 +467,22 @@ async function publishPost() {
     let publishAt = new Date().toISOString();
     if (STATE.schedType === "later") {
       const d = document.getElementById("inp-sched-date").value;
-      if (!d) { setPublishStatus("Choisis une date de publication.", "err"); btn.disabled = false; return; }
+      if (!d) { 
+        setPublishStatus("Choisis une date de publication.", "err"); 
+        btn.disabled = false; 
+        return; 
+      }
       publishAt = new Date(d).toISOString();
     }
 
     let timerTarget = null;
     if (STATE.timerType !== "none") {
       const td = document.getElementById("inp-timer-date").value;
-      if (!td) { setPublishStatus("Choisis une date pour le timer.", "err"); btn.disabled = false; return; }
+      if (!td) { 
+        setPublishStatus("Choisis une date pour le timer.", "err"); 
+        btn.disabled = false; 
+        return; 
+      }
       timerTarget = new Date(td).toISOString();
     }
 
@@ -514,10 +500,11 @@ async function publishPost() {
     }).select().single();
 
     if (postErr) throw postErr;
+
+    // Envoi notification push via API Vercel (publication immédiate uniquement)
     if (notifyUsers && STATE.schedType === "now") {
-    await sendOneSignalNotification(postData);
-    
-    
+      setPublishStatus("Envoi des notifications...");
+      await sendOneSignalNotificationViaAPI(postData);
     }
 
     setPublishStatus("✓ Post publié !", "ok");
@@ -532,29 +519,35 @@ async function publishPost() {
   }
 }
 
-// ── Envoi notification push via ntfy.sh ──
-// Pas besoin de serveur ! L'admin envoie directement depuis le navigateur.
-async function sendNtfyNotification(post) {
-  const topic = NTFY_TOPICS[post.theme];
-  if (!topic) return;
-
+// ── Envoi notification push via API Vercel (SÉCURISÉ) ──
+async function sendOneSignalNotificationViaAPI(post) {
   const themeLabel = ALL_THEMES.find(t => t.id === post.theme)?.label || post.theme;
 
   try {
-    await fetch(`${NTFY_BASE}/${topic}`, {
+    const response = await fetch("/api/send-push", {
       method: "POST",
-      headers: {
-        "Title": `puls. — ${themeLabel}`,
-        "Priority": "default",
-        "Tags": post.theme,
-        "Click": window.location.origin,
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: post.title + (post.description ? "\n" + post.description : ""),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: post.title,
+        theme: post.theme,
+        themeLabel: themeLabel
+      })
     });
-    console.log("Notification ntfy envoyée !");
-  } catch(e) {
-    console.warn("ntfy error (non bloquant):", e);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Erreur API:", errorData);
+      throw new Error("Erreur API: " + (errorData.error || response.statusText));
+    }
+
+    const data = await response.json();
+    console.log("✓ Notification envoyée via API:", data);
+    return data;
+    
+  } catch(err) {
+    console.error("Erreur envoi notification:", err);
+    // Ne pas bloquer la publication si les notifications échouent
+    console.warn("Les notifications n'ont pas pu être envoyées, mais le post est publié");
   }
 }
 
@@ -592,7 +585,7 @@ function showInstallBanner() {
     banner.innerHTML = `
       <span style="font-size:20px;">📲</span>
       <div class="install-banner-text">
-        Pour les notifs sur iOS, installe <strong>ntfy</strong> (App Store) puis ajoute cette app :<br>
+        Installe puls. sur ton iPhone :<br>
         <strong>Safari → Partager → Sur l'écran d'accueil</strong>
       </div>
       <button class="install-banner-close" id="close-install">✕</button>`;
@@ -613,7 +606,10 @@ function showInstallBanner() {
       <button class="btn-small" id="btn-do-install">Installer</button>
       <button class="install-banner-close" id="close-install2">✕</button>`;
     document.body.appendChild(banner);
-    document.getElementById("btn-do-install").addEventListener("click", () => { e.prompt(); banner.remove(); });
+    document.getElementById("btn-do-install").addEventListener("click", () => { 
+      e.prompt(); 
+      banner.remove(); 
+    });
     document.getElementById("close-install2").addEventListener("click", () => banner.remove());
   });
 }
@@ -652,26 +648,6 @@ function escHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-async function sendOneSignalNotification(post) {
-  const themeLabel = ALL_THEMES.find(t => t.id === post.theme)?.label || post.theme;
 
-  try {
-    // On appelle notre PROPRE API sur Vercel (pas de CORS ici)
-    const response = await fetch("/api/send-push", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: post.title,
-        theme: post.theme,
-        themeLabel: themeLabel
-      })
-    });
-
-    const resData = await response.json();
-    console.log("Notification envoyée via Vercel :", resData);
-  } catch (err) {
-    console.error("Erreur d'appel à l'API Vercel :", err);
-  }
-}
 // ── Boot ──
 initSetup();

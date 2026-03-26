@@ -11,16 +11,18 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="stylesheet" href="/css/app.css" />
+  
+  <!-- SDK OneSignal v16 -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 </head>
 <body>
-  <!-- SDK OneSignal -->
   <script>
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(function(OneSignal) {
       OneSignal.init({
         appId: "fa5e5464-d139-4d38-b9d8-438d9f753375",
-        allowLocalhostAsSecureOrigin: true, // Utile pour tes tests
-        notifyButton: { enable: false }, 
+        allowLocalhostAsSecureOrigin: true,
+        notifyButton: { enable: false },
       });
     });
   </script>
@@ -58,7 +60,7 @@
       <div class="notif-row">
         <div>
           <div class="field-label">Notifications push</div>
-          <div class="field-hint">Reçois les alertes via l'app ntfy (gratuite)</div>
+          <div class="field-hint">Reçois les alertes en temps réel</div>
         </div>
         <label class="toggle-wrap">
           <input type="checkbox" id="toggle-notif" checked />
@@ -167,7 +169,7 @@
       <div class="notif-row">
         <div>
           <div class="field-label">Notifier les abonnés</div>
-          <div class="field-hint">Envoie une notification push via ntfy</div>
+          <div class="field-hint">Envoie une notification push</div>
         </div>
         <label class="toggle-wrap">
           <input type="checkbox" id="toggle-push" checked />
