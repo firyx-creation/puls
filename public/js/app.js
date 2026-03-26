@@ -665,11 +665,24 @@ function escHtml(str) {
 }
 // --- FONCTION LIKE ---
 async function toggleLike(postId) {
-  const { data, error } = await db.from('post_likes').insert({ post_id: postId, pseudo: STATE.pseudo });
-  if (error && error.code === '23505') { // Déjà liké -> on l'enlève
-    await db.from('post_likes').delete().match({ post_id: postId, pseudo: STATE.pseudo });
+  const payload = { post_id: postId, pseudo: STATE.pseudo };
+
+  // On tente insert -> si conflict on supprime pour toggle
+  let { error } = await db.from('post_likes').insert(payload);
+
+  if (error && (error.code === '23505' || error.code === '409')) {
+    // Conflit : le like existait déjà, on retire
+    const { error: delError } = await db.from('post_likes').delete().match(payload);
+    if (delError) {
+      console.error('Erreur suppression like existant :', delError);
+      return;
+    }
+  } else if (error) {
+    console.error('Erreur like:', error);
+    return;
   }
-  loadStats(postId);
+
+  await loadStats(postId);
 }
 
 // --- FONCTION RÉPONDRE ---
