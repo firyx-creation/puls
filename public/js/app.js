@@ -20,6 +20,7 @@ let STATE = {
   unsubFeed:     null,
   timers:        {},
   seenPosts:     new Set(JSON.parse(localStorage.getItem("puls_seen") || "[]")),
+  liveStatus:    false,
   selectedTheme: "live",
   selectedImage: null,
   timerType:     "none",
@@ -220,6 +221,7 @@ function startApp() {
   if (!STATE.isAdmin) btnCompose.style.display = "none";
 
   updateOneSignalTags(STATE.prefs);
+  loadLiveStatus();
 
   showScreen("feed");
   initFeed();
@@ -239,6 +241,33 @@ function startApp() {
         await presenceChannel.track({ online_at: new Date().toISOString(), user: STATE.pseudo });
       }
     });
+
+  initLiveListener();
+}
+
+function initLiveListener() {
+  db.channel('users_live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, payload => {
+      if (!payload.new) return;
+      if (payload.new.pseudo === STATE.pseudo) return; // local status déjà géré
+      if (payload.new.live !== undefined) {
+        console.log('Live status utilisateur mise à jour:', payload.new.pseudo, payload.new.live);
+        showLiveBadge(payload.new.pseudo, payload.new.live);
+      }
+    })
+    .subscribe();
+}
+
+function showLiveBadge(pseudo, isLive) {
+  const el = document.getElementById('live-indicator');
+  if (!el) return;
+
+  if (isLive) {
+    el.textContent = `🔴 ${pseudo} est en direct`;
+    el.classList.remove('hidden');
+  } else if (pseudo === STATE.pseudo) {
+    el.classList.toggle('hidden', !STATE.liveStatus);
+  }
 }
 
 // ══════════════════════════════════════
@@ -715,6 +744,9 @@ function initSettings() {
   document.getElementById("btn-clear-cache").addEventListener("click", clearCache);
   document.getElementById("btn-logout").addEventListener("click", logout);
   document.getElementById("btn-add-pref").addEventListener("click", openThemeModal);
+  document.getElementById("btn-toggle-live").addEventListener("click", async () => {
+    await toggleLiveStatus();
+  });
 }
 
 function openSettings() {
@@ -730,8 +762,60 @@ function openSettings() {
     chip.textContent = t.label;
     wrap.appendChild(chip);
   });
-  
+
+  renderLiveUI();
   showScreen("settings");
+}
+
+function renderLiveUI() {
+  const liveIndicator = document.getElementById("live-status");
+  const button = document.getElementById("btn-toggle-live");
+
+  if (!liveIndicator || !button) return;
+
+  if (STATE.liveStatus) {
+    liveIndicator.textContent = "Statut: en direct";
+    liveIndicator.className = "live-status live-on";
+    button.textContent = "Arrêter le live";
+  } else {
+    liveIndicator.textContent = "Statut: hors ligne";
+    liveIndicator.className = "live-status";
+    button.textContent = "Passer en live";
+  }
+}
+
+async function setLiveStatus(isLive) {
+  STATE.liveStatus = isLive;
+
+  try {
+    await db.from("users").update({ live: isLive, updated_at: new Date().toISOString() }).eq("pseudo", STATE.pseudo);
+  } catch (err) {
+    console.error("Erreur mise à jour live status:", err);
+  }
+
+  const indicator = document.getElementById("live-indicator");
+  if (indicator) {
+    indicator.classList.toggle("hidden", !isLive);
+  }
+
+  renderLiveUI();
+}
+
+async function toggleLiveStatus() {
+  await setLiveStatus(!STATE.liveStatus);
+}
+
+async function loadLiveStatus() {
+  try {
+    const { data, error } = await db.from("users").select("live").eq("pseudo", STATE.pseudo).single();
+    if (error && error.code !== "PGRST116") {
+      console.warn("Erreur lecture live-status", error);
+    }
+    const live = data?.live || false;
+    await setLiveStatus(live);
+  } catch (err) {
+    console.warn("Erreur loadLiveStatus:", err);
+  }
 }
 
 function clearCache() {

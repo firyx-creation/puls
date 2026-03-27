@@ -83,8 +83,7 @@
   <header class="topbar">
     <div class="topbar-left">
       <span class="logo-text sm">puls<span class="logo-dot">.</span><span class="beta-badge">BETA</span></span>
-      <span id="user-online-tag" class="online-tag">● <span id="user-count">1</span></span>
-    </div>
+      <span id="live-indicator" class="live-indicator hidden">🔴 EN DIRECT</span>
 
 
     <span class="logo-text sm">puls<span class="logo-dot">.</span></span>
@@ -225,6 +224,12 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
+    </div>
+
+    <div class="card">
+      <label class="field-label">Live</label>
+      <button class="btn-small" id="btn-toggle-live">Passer en live</button>
+      <div id="live-status" class="live-status">Statut: hors ligne</div>
     </div>
 
     <div class="card danger-card">
