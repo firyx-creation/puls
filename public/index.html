@@ -19,19 +19,13 @@
 <body>
   <script>
     window.OneSignal = window.OneSignal || [];
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    
+
     window.OneSignal.push(function() {
       OneSignal.init({
         appId: "fa5e5464-d139-4d38-b9d8-438d9f753375",
         allowLocalhostAsSecureOrigin: true,
         notifyButton: { enable: false },
       });
-    });
-
-    window.OneSignalDeferred.push(function(OneSignal) {
-      // compatibilité si code existant utilise OneSignalDeferred
-      return OneSignal;
     });
   </script>
 

@@ -162,8 +162,8 @@ function runOneSignal(fn) {
   if (typeof window.OneSignal.push === 'function') {
     window.OneSignal.push(fn);
   } else {
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    window.OneSignalDeferred.push(fn);
+    console.warn('⚠️ OneSignal.push not available yet - retrying soon');
+    setTimeout(() => runOneSignal(fn), 300);
   }
 }
 
