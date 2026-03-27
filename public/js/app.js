@@ -237,6 +237,7 @@ function setLiveUi(live, viewers, source) {
 }
 
 async function fetchTwitchLive() {
+  if (!AUTO_POST_ENABLED.twitch_live) return;
   if (!TWITCH_CLIENT_ID || !TWITCH_BEARER_TOKEN || !TWITCH_CHANNEL_NAME) return;
 
   try {
@@ -269,6 +270,7 @@ async function fetchTwitchLive() {
 }
 
 async function fetchYoutubeLive() {
+  if (!AUTO_POST_ENABLED.youtube_live) return;
   if (!YOUTUBE_API_KEY || !YOUTUBE_CHANNEL_ID) return;
 
   try {
@@ -295,6 +297,7 @@ async function fetchYoutubeLive() {
 }
 
 async function fetchYoutubeLatestVideo() {
+  if (!AUTO_POST_ENABLED.youtube_latest_video) return;
   if (!YOUTUBE_API_KEY || !YOUTUBE_CHANNEL_ID) return;
 
   try {
@@ -310,6 +313,14 @@ async function fetchYoutubeLatestVideo() {
     if (!latest) return;
 
     const videoId = latest.id.videoId;
+    const channelId = latest.snippet.channelId;
+    
+    // ⚠️ Sécurité : vérifier que la vidéo vient bien du channel configuré
+    if (channelId !== YOUTUBE_CHANNEL_ID) {
+      console.warn("⚠️ Vidéo d'un autre channel détectée, auto-post bloqué");
+      return;
+    }
+
     const cached = localStorage.getItem("puls_latest_youtube_video");
     if (videoId && videoId !== cached) {
       const title = latest.snippet.title;
@@ -358,17 +369,24 @@ async function createOrUpdateAutoPost(title, content) {
 }
 
 function initExternalLiveTracking() {
+  // Seulement si au moins une source est activée
+  const hasEnabledSource = Object.values(AUTO_POST_ENABLED).some(v => v);
+  if (!hasEnabledSource) {
+    console.log("Auto-tracking extérieur désactivé");
+    return;
+  }
+
   fetchTwitchLive();
   fetchYoutubeLive();
   fetchYoutubeLatestVideo();
 
   setInterval(() => {
-    fetchTwitchLive();
-    fetchYoutubeLive();
+    if (AUTO_POST_ENABLED.twitch_live) fetchTwitchLive();
+    if (AUTO_POST_ENABLED.youtube_live) fetchYoutubeLive();
   }, 30_000);
 
   setInterval(() => {
-    fetchYoutubeLatestVideo();
+    if (AUTO_POST_ENABLED.youtube_latest_video) fetchYoutubeLatestVideo();
   }, 90_000);
 }
 
@@ -578,6 +596,14 @@ function renderPostCard(post) {
         <div class="post-title">${escHtml(post.title)}</div>
         ${post.description ? `<div class="post-desc">${escHtml(post.description)}</div>` : ''}
         ${post.image_url ? `<img src="${post.image_url}" class="post-image" />` : ''}
+        ${post.video_url ? `
+          <a href="${post.video_url}" target="_blank" class="video-link-card">
+            <div class="video-preview-actual">
+              <img src="https://img.youtube.com/vi/${extractYoutubeId(post.video_url)}/maxresdefault.jpg" alt="Video" />
+            </div>
+            <div class="video-link-text">▶ Regarder sur YouTube</div>
+          </a>
+        ` : ''}
       </div>
       
       <div class="post-actions">
@@ -673,6 +699,14 @@ document.getElementById("modal-theme").addEventListener("click", (e) => {
 // ══════════════════════════════════════
 //  COMPOSE (ADMIN)
 // ══════════════════════════════════════
+// ── Utilitaires ──
+function extractYoutubeId(url) {
+  if (!url) return null;
+  // Formats: youtube.com/watch?v=ID, youtu.be/ID
+  let match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+
 function initCompose() {
   document.getElementById("btn-back-feed").addEventListener("click", () => {
     showScreen("feed");
@@ -704,6 +738,31 @@ function initCompose() {
       imgPreview.innerHTML = `<img src="${ev.target.result}" class="img-preview-actual" alt="Preview" />`;
     };
     reader.readAsDataURL(file);
+  });
+
+  // Vidéo YouTube
+  const videoInput = document.getElementById("inp-video-url");
+  const videoPreview = document.getElementById("video-preview");
+  
+  videoInput.addEventListener("input", (e) => {
+    const url = e.target.value.trim();
+    const videoId = extractYoutubeId(url);
+    
+    STATE.selectedVideoUrl = url;
+    STATE.selectedVideoId = videoId;
+    
+    if (videoId) {
+      const thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+      videoPreview.innerHTML = `
+        <div class="video-preview-actual">
+          <img src="${thumbnail}" alt="Video preview" />
+        </div>
+      `;
+    } else if (url) {
+      videoPreview.innerHTML = `<span class="hint-text">❌ URL YouTube invalide</span>`;
+    } else {
+      videoPreview.innerHTML = `<span class="hint-text">Le preview s'affichera ici</span>`;
+    }
   });
 
   // Timer type
@@ -789,6 +848,7 @@ async function publishPost() {
       description: desc,
       theme:       STATE.selectedTheme,
       image_url:   imageUrl,
+      video_url:   STATE.selectedVideoUrl || null,
       timer_type:  STATE.timerType,
       timer_target: timerTarget,
       publish_at:  publishAt,
@@ -881,8 +941,12 @@ async function sendOneSignalNotificationViaAPI(post) {
 function resetCompose() {
   document.getElementById("inp-title").value = "";
   document.getElementById("inp-desc").value = "";
+  document.getElementById("inp-video-url").value = "";
   document.getElementById("img-preview").innerHTML = "<span>Appuie pour choisir une image</span>";
+  document.getElementById("video-preview").innerHTML = "<span class=\"hint-text\">Le preview s'affichera ici</span>";
   STATE.selectedImage = null;
+  STATE.selectedVideoUrl = null;
+  STATE.selectedVideoId = null;
   STATE.timerType = "none";
   STATE.schedType = "now";
   document.querySelectorAll("#timer-type .seg").forEach((s,i) => s.classList.toggle("active", i===0));

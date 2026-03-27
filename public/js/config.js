@@ -15,13 +15,19 @@ const ADMIN_PSEUDO = "Firyx";
 
 // ► Twitch & YouTube live (optionnel)
 const TWITCH_CLIENT_ID = "v06465e5z4k4n5g2d55oz9qf5igzq6";
-const TWITCH_BEARER_TOKEN = "ks2j0x6xh4j437yq3qw1t2g8glzpbo"; // format: Bearer ...
+const TWITCH_BEARER_TOKEN = ""; // DÉSACTIVÉ - token expiré (401)
 const TWITCH_CHANNEL_NAME = "firyx_yt";
 
 const YOUTUBE_API_KEY = "AIzaSyC9BfN1gnX3-1iCzy2wOKbDX3MA40f2gjA";
 const YOUTUBE_CHANNEL_ID = "UCIO2bQtiEVHfiYJjpQ-BRNg";
 
-// ► Tous les thèmes disponibles
+// ► Auto-post configuration
+const AUTO_POST_ENABLED = {
+  youtube_latest_video: false,  // Désactivé pour éviter posts d'amis
+  twitch_live: false,           // Désactivé - Twitch 401
+  youtube_live: true            // OK - détecte seulement les lives
+};
+
 const ALL_THEMES = [
   { id: "live",     label: "🔴 Live" },
   { id: "video",    label: "🎬 Vidéo" },
