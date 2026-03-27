@@ -106,22 +106,30 @@ async function setupOneSignalNotifications(pseudo, prefs) {
           throw new Error("OneSignal SDK introuvable");
         }
 
-        if (typeof oneSignal.Notifications?.requestPermission === "function") {
-          const permission = await oneSignal.Notifications.requestPermission();
-          if (!permission) {
-            setNotifStatus("Notifications refusées", "err");
-            resolve(false);
-            return;
-          }
-        }
+        let hasPermission = true;
 
-        // Activation de l'abonnement pour forcer en cas d'échec d'état
+        // OneSignal v16: contrôle d'autorisation via isPushNotificationsEnabled
         if (typeof oneSignal.isPushNotificationsEnabled === "function") {
           const enabled = await oneSignal.isPushNotificationsEnabled();
-          if (!enabled && typeof oneSignal.registerForPushNotifications === "function") {
-            await oneSignal.registerForPushNotifications();
+          if (!enabled) {
+            if (typeof oneSignal.registerForPushNotifications === "function") {
+              await oneSignal.registerForPushNotifications();
+              hasPermission = await oneSignal.isPushNotificationsEnabled();
+            } else {
+              hasPermission = false;
+            }
           }
+        } else if (typeof oneSignal.getNotificationPermission === "function") {
+          const perm = await oneSignal.getNotificationPermission();
+          hasPermission = perm === "granted";
         }
+
+        if (!hasPermission) {
+          setNotifStatus("Notifications refusées", "err");
+          resolve(false);
+          return;
+        }
+
 
         // 2. Définir les tags (pseudo + thèmes)
         const tags = { pseudo };
