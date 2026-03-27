@@ -81,7 +81,7 @@
 <div id="screen-feed" class="screen">
   <header class="topbar">
     <div class="topbar-left">
-      <span class="logo-text sm">puls<span class="logo-dot">.</span></span>
+      <span class="logo-text sm">puls<span class="logo-dot">.</span><span class="beta-badge">BETA</span></span>
       <span id="user-online-tag" class="online-tag">● <span id="user-count">1</span></span>
     </div>
 
@@ -89,6 +89,7 @@
     <span class="logo-text sm">puls<span class="logo-dot">.</span></span>
     <div class="topbar-right">
       <button class="icon-btn" id="btn-filter" title="Filtrer">⚙</button>
+      <button class="icon-btn" id="btn-settings" title="Paramètres">⚙️</button>
       <button class="icon-btn" id="btn-goto-compose" title="Créer un post">＋</button>
     </div>
   </header>
@@ -187,6 +188,51 @@
 
     <button class="btn-primary" id="btn-publish">Publier</button>
     <div id="publish-status" class="publish-status"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     ÉCRAN : PARAMÈTRES
+═══════════════════════════════════════════ -->
+<div id="screen-settings" class="screen">
+  <header class="topbar">
+    <button class="icon-btn" id="btn-back-settings">←</button>
+    <span class="topbar-title">Paramètres</span>
+    <div></div>
+  </header>
+
+  <div class="settings-wrap">
+    <div class="card">
+      <label class="field-label">Ton pseudo</label>
+      <div class="settings-pseudo" id="settings-pseudo">-</div>
+    </div>
+
+    <div class="card">
+      <label class="field-label">Tes préférences</label>
+      <div class="prefs-grid" id="settings-prefs"></div>
+      <button class="btn-small mt10" id="btn-add-pref">+ Ajouter un thème</button>
+    </div>
+
+    <div class="card">
+      <label class="field-label">Notifications</label>
+      <div class="notif-row">
+        <div>
+          <div class="field-hint">Activer les notifications push</div>
+        </div>
+        <label class="toggle-wrap">
+          <input type="checkbox" id="toggle-notif-settings" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card danger-card">
+      <label class="field-label">Données</label>
+      <button class="btn-secondary" id="btn-clear-cache">🗑️ Vider le cache du site</button>
+      <div id="cache-status" class="cache-status"></div>
+    </div>
+
+    <button class="btn-secondary mt10" id="btn-logout">Déconnexion</button>
   </div>
 </div>
 

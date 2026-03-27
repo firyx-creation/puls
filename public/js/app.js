@@ -166,6 +166,7 @@ function startApp() {
   showScreen("feed");
   initFeed();
   initCompose();
+  initSettings();
   showInstallBanner();
   // Détection du nombre de personnes en ligne
   const presenceChannel = db.channel('online-users');
@@ -235,6 +236,14 @@ function subscribeFeed() {
         renderFeedFromCache();
       }
     )
+    .on("postgres_changes", 
+      { event: "DELETE", schema: "public", table: "posts" },
+      (payload) => {
+        console.log("Post supprimé détecté:", payload.old.id);
+        _cachedPosts = _cachedPosts.filter(p => p.id !== payload.old.id);
+        renderFeedFromCache();
+      }
+    )
     .subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         console.log("Abonné au feed en temps réel");
@@ -296,6 +305,9 @@ function renderFeedFromCache() {
 
   feedList.innerHTML = filtered.map(p => renderPostCard(p)).join("");
   startTimers();
+  
+  // Charger les likes et réponses pour tous les posts affichés
+  filtered.forEach(p => loadStats(p.id));
 }
 
 function renderPostCard(post) {
@@ -536,9 +548,13 @@ async function publishPost() {
     if (postErr) throw postErr;
 
     // Envoi notification push via API Vercel (publication immédiate uniquement)
-    if (notifyUsers && STATE.schedType === "now") {
-      setPublishStatus("Envoi des notifications...");
-      await sendOneSignalNotificationViaAPI(postData);
+    if (notifyUsers) {
+      if (STATE.schedType === "now") {
+        setPublishStatus("Envoi des notifications...");
+        await sendOneSignalNotificationViaAPI(postData);
+      } else {
+        console.log("Post programmé - notifications reportées");
+      }
     }
 
     setPublishStatus("✓ Post publié !", "ok");
@@ -557,6 +573,12 @@ async function publishPost() {
 async function sendOneSignalNotificationViaAPI(post) {
   const themeLabel = ALL_THEMES.find(t => t.id === post.theme)?.label || post.theme;
 
+  console.log("📢 Envoi notif OneSignal pour:", {
+    title: post.title,
+    theme: post.theme,
+    themeLabel: themeLabel
+  });
+
   try {
     const response = await fetch("/api/send-push", {
       method: "POST",
@@ -570,18 +592,22 @@ async function sendOneSignalNotificationViaAPI(post) {
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error("Erreur API:", errorData);
+      console.error("❌ Erreur API send-push:", {
+        status: response.status,
+        error: errorData
+      });
       throw new Error("Erreur API: " + (errorData.error || response.statusText));
     }
 
     const data = await response.json();
-    console.log("✓ Notification envoyée via API:", data);
+    console.log("✅ Notification envoyée via OneSignal:", data);
+    setPublishStatus("✓ Notifications envoyées !", "ok");
     return data;
     
   } catch(err) {
-    console.error("Erreur envoi notification:", err);
+    console.error("❌ Erreur envoi notification:", err);
     // Ne pas bloquer la publication si les notifications échouent
-    console.warn("Les notifications n'ont pas pu être envoyées, mais le post est publié");
+    console.warn("⚠️ Les notifications n'ont pas pu être envoyées, mais le post est publié");
   }
 }
 
@@ -602,6 +628,86 @@ function setPublishStatus(msg, type) {
   const el = document.getElementById("publish-status");
   el.textContent = msg;
   el.className = "publish-status " + (type || "");
+}
+
+// ══════════════════════════════════════
+//  PARAMÈTRES
+// ══════════════════════════════════════
+function initSettings() {
+  document.getElementById("btn-settings").addEventListener("click", openSettings);
+  document.getElementById("btn-back-settings").addEventListener("click", () => {
+    showScreen("feed");
+  });
+  document.getElementById("btn-clear-cache").addEventListener("click", clearCache);
+  document.getElementById("btn-logout").addEventListener("click", logout);
+  document.getElementById("btn-add-pref").addEventListener("click", openThemeModal);
+}
+
+function openSettings() {
+  // Afficher pseudo et prefs
+  document.getElementById("settings-pseudo").textContent = STATE.pseudo;
+  
+  const wrap = document.getElementById("settings-prefs");
+  wrap.innerHTML = "";
+  ALL_THEMES.forEach(t => {
+    if (!STATE.prefs.includes(t.id)) return;
+    const chip = document.createElement("span");
+    chip.className = "pref-chip sel";
+    chip.textContent = t.label;
+    wrap.appendChild(chip);
+  });
+  
+  showScreen("settings");
+}
+
+function clearCache() {
+  const statusEl = document.getElementById("cache-status");
+  const btnClear = document.getElementById("btn-clear-cache");
+  
+  btnClear.disabled = true;
+  statusEl.textContent = "Suppression en cours...";
+  
+  try {
+    // Vider localStorage
+    localStorage.clear();
+    
+    // Vider le cache navigateur (Service Worker)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(reg => {
+          reg.unregister();
+          // Nettoyer le cache
+          if ('caches' in window) {
+            caches.keys().then(cacheNames => {
+              cacheNames.forEach(cacheName => {
+                caches.delete(cacheName);
+              });
+            });
+          }
+        });
+      });
+    }
+    
+    statusEl.textContent = "✓ Cache supprimé ! Rechargement...";
+    statusEl.className = "cache-status ok";
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+    
+  } catch(err) {
+    console.error("Erreur suppression cache:", err);
+    statusEl.textContent = "❌ Erreur : " + err.message;
+    statusEl.className = "cache-status err";
+    btnClear.disabled = false;
+  }
+}
+
+function logout() {
+  if (!confirm("Bonne d'être sûr ? Tu perdras ton pseudo et tes préférences.")) return;
+  
+  localStorage.clear();
+  sessionStorage.clear();
+  location.reload();
 }
 
 // ══════════════════════════════════════
@@ -748,15 +854,16 @@ async function deletePost(postId) {
 async function loadStats(postId) {
   // Compter likes
   const { count: likes } = await db.from('post_likes').select('*', { count: 'exact', head: true }).eq('post_id', postId);
-  document.getElementById(`like-count-${postId}`).textContent = likes || 0;
+  const likeBtn = document.getElementById(`like-count-${postId}`);
+  if (likeBtn) likeBtn.textContent = likes || 0;
 
   // Charger les réponses
   const { data: replies } = await db.from('post_replies').select('*').eq('post_id', postId).order('created_at', { ascending: true });
   const list = document.getElementById(`replies-list-${postId}`);
-  if (replies && replies.length > 0) {
+  if (list && replies && replies.length > 0) {
     list.innerHTML = replies.map(r => `
       <div class="reply-item">
-        <span class="reply-author">${escHtml(r.author)}</span> ${escHtml(r.content)}
+        <span class="reply-author">${escHtml(r.pseudo)}</span> ${escHtml(r.content)}
       </div>
     `).join('');
   }
