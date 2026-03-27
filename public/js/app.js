@@ -70,14 +70,17 @@ function initSetup() {
 
     // Envoi à Supabase
     try {
-      await db.from("users").upsert({ 
-        pseudo, 
-        prefs, 
-        updated_at: new Date().toISOString() 
+      await db.from("users").upsert({
+        pseudo,
+        prefs,
+        updated_at: new Date().toISOString()
       });
-    } catch(e) { 
-      console.error("Erreur Supabase:", e); 
+    } catch(e) {
+      console.error("Erreur Supabase:", e);
     }
+
+    // Mise à jour des tags OneSignal avec les prefs choisies
+    updateOneSignalTags(prefs);
 
     // Configuration OneSignal
     if (document.getElementById("toggle-notif").checked) {
@@ -131,11 +134,11 @@ function updateOneSignalTags(prefs) {
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   OneSignalDeferred.push(async function(OneSignal) {
     try {
-      const tags = {};
+      const tags = { pseudo: STATE.pseudo };
       ALL_THEMES.forEach(t => {
         tags[t.id] = prefs.includes(t.id) ? "true" : "false";
       });
-      
+
       await OneSignal.User.addTags(tags);
       console.log("Tags OneSignal mis à jour:", tags);
     } catch (err) {
