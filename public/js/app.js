@@ -136,26 +136,27 @@ async function setupOneSignalNotifications(pseudo, prefs) {
 
 // ── Mettre à jour les tags OneSignal ──
 function updateOneSignalTags(prefs) {
-  if (!window.OneSignal) {
-    console.warn("⚠️ OneSignal pas encore disponible");
-    return;
-  }
+  const tags = { pseudo: STATE.pseudo };
+  ALL_THEMES.forEach(t => {
+    tags[t.id] = prefs.includes(t.id) ? "true" : "false";
+  });
 
-  try {
-    const tags = { pseudo: STATE.pseudo };
-    ALL_THEMES.forEach(t => {
-      tags[t.id] = prefs.includes(t.id) ? "true" : "false";
-    });
-
-    // Utiliser la méthode directe si dispo, sinon passer par Deferred
-    if (window.OneSignal && window.OneSignal.User) {
-      window.OneSignal.User.addTags(tags).catch(err => {
-        console.warn("⚠️ Erreur mise à jour tags (non bloquante):", err.message);
-      });
+  // Met en queue si OneSignal n'est pas encore prêt
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    try {
+      await OneSignal.User.addTags(tags);
       console.log("✓ Tags OneSignal mis à jour:", tags);
+    } catch (err) {
+      console.warn("⚠️ Erreur mise à jour tags (non bloquante):", err.message);
     }
-  } catch (err) {
-    console.warn("⚠️ Erreur mise à jour tags:", err.message);
+  });
+
+  // Si OneSignal déjà prêt, exécute immédiatemment
+  if (window.OneSignal && window.OneSignal.User) {
+    window.OneSignal.User.addTags(tags).catch(err => {
+      console.warn("⚠️ Erreur mise à jour tags (non bloquante):", err.message);
+    });
   }
 }
 
@@ -173,8 +174,12 @@ function startApp() {
   STATE.isAdmin = STATE.pseudo === ADMIN_PSEUDO;
   const btnCompose = document.getElementById("btn-goto-compose");
   if (!STATE.isAdmin) btnCompose.style.display = "none";
-  
-  updateOneSignalTags(STATE.prefs);
+
+  // Ne pas forcer update de tags si OneSignal non initialisé
+  if (window.OneSignal && window.OneSignal.User) {
+    updateOneSignalTags(STATE.prefs);
+  }
+
   showScreen("feed");
   initFeed();
   initCompose();

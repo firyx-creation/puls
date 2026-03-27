@@ -63,8 +63,8 @@ exports.sendPostNotification = functions.firestore
           notification: {
             title,
             body,
-            icon: "/icons/icon-192.png",
-            badge: "/icons/icon-192.png",
+            icon: "/icons/icon-192.svg",
+            badge: "/icons/icon-192.svg",
             vibrate: [200, 100, 200],
           },
           fcmOptions: { link: "/" },
@@ -158,8 +158,8 @@ exports.publishScheduledPosts = functions.pubsub
                 notification: {
                   title,
                   body,
-                  icon: "/icons/icon-192.png",
-                  badge: "/icons/icon-192.png",
+                  icon: "/icons/icon-192.svg",
+                  badge: "/icons/icon-192.svg",
                   vibrate: [200, 100, 200],
                 },
                 fcmOptions: { link: "/" },

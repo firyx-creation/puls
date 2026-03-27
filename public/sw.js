@@ -30,8 +30,8 @@ self.addEventListener("push", e => {
   e.waitUntil(
     Promise.resolve(data).then(d => self.registration.showNotification(d.title || "puls.", {
       body: d.body || "",
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
+      icon: "/icons/icon-192.svg",
+      badge: "/icons/icon-192.svg",
       vibrate: [200, 100, 200],
       data: { url: "/" },
     }))
