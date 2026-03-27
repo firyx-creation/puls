@@ -202,6 +202,10 @@ async function debugOneSignalStatus() {
     return;
   }
 
+  // +++ External live status tracking +++
+  if (typeof fetchTwitchLive === 'function') await fetchTwitchLive();
+  if (typeof fetchYoutubeLive === 'function') await fetchYoutubeLive();
+
   try {
     const userId = typeof OneSignal.getUserId === 'function' ? await OneSignal.getUserId() : null;
     const isEnabled = typeof OneSignal.isPushNotificationsEnabled === 'function' ? await OneSignal.isPushNotificationsEnabled() : null;
@@ -210,6 +214,162 @@ async function debugOneSignalStatus() {
   } catch (err) {
     console.warn("🧾 OneSignal status error:", err.message || err);
   }
+}
+
+function setLiveUi(live, viewers, source) {
+  const indicator = document.getElementById("live-indicator");
+  const v = document.getElementById("live-viewers");
+
+  if (!indicator || !v) return;
+
+  if (live) {
+    indicator.classList.remove("hidden");
+    indicator.textContent = `🔴 Live (${source})`;
+    v.classList.remove("hidden");
+    v.textContent = `${viewers || 0} viewers`;
+    STATE.liveStatus = true;
+  } else {
+    if (!STATE.liveStatus) {
+      indicator.classList.add("hidden");
+    }
+    v.classList.add("hidden");
+  }
+}
+
+async function fetchTwitchLive() {
+  if (!TWITCH_CLIENT_ID || !TWITCH_BEARER_TOKEN || !TWITCH_CHANNEL_NAME) return;
+
+  try {
+    const url = `https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(TWITCH_CHANNEL_NAME)}`;
+    const res = await fetch(url, {
+      headers: {
+        "Client-ID": TWITCH_CLIENT_ID,
+        "Authorization": `Bearer ${TWITCH_BEARER_TOKEN}`
+      }
+    });
+
+    if (!res.ok) {
+      console.warn("Twitch API non disponible", res.status);
+      return;
+    }
+
+    const data = await res.json();
+    const stream = data.data && data.data.length ? data.data[0] : null;
+
+    if (stream && stream.type === "live") {
+      setLiveUi(true, stream.viewer_count, "Twitch");
+      // create auto post when stream starts (only once)
+      await createOrUpdateAutoPost(`Live: ${stream.title}`, `Regarde le live sur Twitch : https://twitch.tv/${TWITCH_CHANNEL_NAME}`);
+    } else {
+      setLiveUi(false, 0, "Twitch");
+    }
+  } catch (err) {
+    console.warn("fetchTwitchLive erreur", err);
+  }
+}
+
+async function fetchYoutubeLive() {
+  if (!YOUTUBE_API_KEY || !YOUTUBE_CHANNEL_ID) return;
+
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${YOUTUBE_CHANNEL_ID}&eventType=live&type=video&key=${YOUTUBE_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn("YouTube API live status non disponible", res.status);
+      return;
+    }
+
+    const data = await res.json();
+    const liveVideo = data.items && data.items.length ? data.items[0] : null;
+
+    if (liveVideo) {
+      // obtenir viewers via liveBroadcasts API si besoin
+      setLiveUi(true, "?", "YouTube");
+      await createOrUpdateAutoPost(`Live YouTube: ${liveVideo.snippet.title}`, `Regarde en live : https://www.youtube.com/watch?v=${liveVideo.id.videoId}`);
+    } else {
+      setLiveUi(false, 0, "YouTube");
+    }
+  } catch (err) {
+    console.warn("fetchYoutubeLive erreur", err);
+  }
+}
+
+async function fetchYoutubeLatestVideo() {
+  if (!YOUTUBE_API_KEY || !YOUTUBE_CHANNEL_ID) return;
+
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${YOUTUBE_CHANNEL_ID}&order=date&type=video&maxResults=1&key=${YOUTUBE_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn("YouTube API latest video non disponible", res.status);
+      return;
+    }
+
+    const data = await res.json();
+    const latest = data.items && data.items.length ? data.items[0] : null;
+    if (!latest) return;
+
+    const videoId = latest.id.videoId;
+    const cached = localStorage.getItem("puls_latest_youtube_video");
+    if (videoId && videoId !== cached) {
+      const title = latest.snippet.title;
+      const desc = latest.snippet.description;
+      await createOrUpdateAutoPost(`Nouvelle vidéo : ${title}`, `${desc}\nhttps://youtube.com/watch?v=${videoId}`);
+      localStorage.setItem("puls_latest_youtube_video", videoId);
+    }
+  } catch (err) {
+    console.warn("fetchYoutubeLatestVideo erreur", err);
+  }
+}
+
+async function createOrUpdateAutoPost(title, content) {
+  try {
+    const { data: existing, error: selErr } = await db.from("posts").select("id, title").eq("title", title).single();
+    if (selErr && selErr.code !== "PGRST116") {
+      console.error("Erreur check post existant", selErr);
+      return;
+    }
+
+    if (existing) {
+      return;
+    }
+
+    const { error: insErr } = await db.from("posts").insert({
+      title,
+      description: content,
+      theme: "live",
+      image_url: null,
+      timer_type: "none",
+      timer_target: null,
+      publish_at: new Date().toISOString(),
+      author: STATE.pseudo || "AutoBot",
+      notify: true
+    });
+
+    if (insErr) {
+      console.error("Erreur création post auto", insErr);
+      return;
+    }
+
+    console.log("Post auto créé pour vidéo/live", title);
+  } catch (err) {
+    console.error("createOrUpdateAutoPost err", err);
+  }
+}
+
+function initExternalLiveTracking() {
+  fetchTwitchLive();
+  fetchYoutubeLive();
+  fetchYoutubeLatestVideo();
+
+  setInterval(() => {
+    fetchTwitchLive();
+    fetchYoutubeLive();
+  }, 30_000);
+
+  setInterval(() => {
+    fetchYoutubeLatestVideo();
+  }, 90_000);
 }
 
 // ══════════════════════════════════════
@@ -222,6 +382,7 @@ function startApp() {
 
   updateOneSignalTags(STATE.prefs);
   loadLiveStatus();
+  initExternalLiveTracking();
 
   showScreen("feed");
   initFeed();
@@ -234,7 +395,10 @@ function startApp() {
     .on('presence', { event: 'sync' }, () => {
       const newState = presenceChannel.presenceState();
       const count = Object.keys(newState).length;
-      document.getElementById('user-count').textContent = count;
+      const userCountEl = document.getElementById('user-count');
+      if (userCountEl) {
+        userCountEl.textContent = count;
+      }
     })
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
@@ -806,11 +970,22 @@ async function toggleLiveStatus() {
 }
 
 async function loadLiveStatus() {
+  if (!STATE.pseudo) return;
+
   try {
     const { data, error } = await db.from("users").select("live").eq("pseudo", STATE.pseudo).single();
-    if (error && error.code !== "PGRST116") {
+
+    if (error) {
+      if (error.code === "PGRST116" || error.message?.includes("No rows returned")) {
+        // utilisateur non trouvé en base, on initialise à false
+        STATE.liveStatus = false;
+        renderLiveUI();
+        return;
+      }
       console.warn("Erreur lecture live-status", error);
+      return;
     }
+
     const live = data?.live || false;
     await setLiveStatus(live);
   } catch (err) {
