@@ -90,28 +90,38 @@ function initSetup() {
 
     // Lancement de l'app
     startApp();
+
   });
 }
 
 // ── Configuration OneSignal complète ──
 async function setupOneSignalNotifications(pseudo, prefs) {
   return new Promise((resolve) => {
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(async function(OneSignal) {
+    runOneSignal(async function() {
       try {
-        console.log("🔔 Initialisation OneSignal pour:", pseudo);
-        
-        // 1. Demander la permission
-        const permission = await OneSignal.Notifications.requestPermission();
-        
-        if (!permission) {
-          setNotifStatus("Notifications refusées", "err");
-          resolve(false);
-          return;
+        const oneSignal = window.OneSignal;
+        console.log("🔔 Initialisation OneSignal pour:", pseudo, " - OneSignal ready:", Boolean(oneSignal));
+
+        if (!oneSignal) {
+          throw new Error("OneSignal SDK introuvable");
         }
 
-        // Petit délai pour laisser OneSignal s'initialiser
-        await new Promise(r => setTimeout(r, 500));
+        if (typeof oneSignal.Notifications?.requestPermission === "function") {
+          const permission = await oneSignal.Notifications.requestPermission();
+          if (!permission) {
+            setNotifStatus("Notifications refusées", "err");
+            resolve(false);
+            return;
+          }
+        }
+
+        // Activation de l'abonnement pour forcer en cas d'échec d'état
+        if (typeof oneSignal.isPushNotificationsEnabled === "function") {
+          const enabled = await oneSignal.isPushNotificationsEnabled();
+          if (!enabled && typeof oneSignal.registerForPushNotifications === "function") {
+            await oneSignal.registerForPushNotifications();
+          }
+        }
 
         // 2. Définir les tags (pseudo + thèmes)
         const tags = { pseudo };
@@ -119,19 +129,34 @@ async function setupOneSignalNotifications(pseudo, prefs) {
           tags[t.id] = prefs.includes(t.id) ? "true" : "false";
         });
 
-        await OneSignal.User.addTags(tags);
-        
+        if (typeof oneSignal.sendTags === "function") {
+          await oneSignal.sendTags(tags);
+        } else if (oneSignal.User && typeof oneSignal.User.addTags === "function") {
+          await oneSignal.User.addTags(tags);
+        }
+
         setNotifStatus("✓ Notifications activées", "ok");
         console.log("✅ OneSignal configuré avec tags:", tags);
+        await debugOneSignalStatus();
         resolve(true);
-        
       } catch (err) {
         console.error("❌ Erreur OneSignal:", err);
-        setNotifStatus("Erreur : " + err.message, "err");
+        setNotifStatus("Erreur : " + (err.message || err), "err");
         resolve(false);
       }
     });
   });
+}
+
+// ── Utilitaire OneSignal ──
+function runOneSignal(fn) {
+  window.OneSignal = window.OneSignal || [];
+  if (typeof window.OneSignal.push === 'function') {
+    window.OneSignal.push(fn);
+  } else {
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push(fn);
+  }
 }
 
 // ── Mettre à jour les tags OneSignal ──
@@ -141,23 +166,18 @@ function updateOneSignalTags(prefs) {
     tags[t.id] = prefs.includes(t.id) ? "true" : "false";
   });
 
-  // Met en queue si OneSignal n'est pas encore prêt
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  OneSignalDeferred.push(async function(OneSignal) {
+  runOneSignal(async function() {
     try {
-      await OneSignal.User.addTags(tags);
+      if (OneSignal && typeof OneSignal.sendTags === 'function') {
+        await OneSignal.sendTags(tags);
+      } else if (OneSignal && OneSignal.User && typeof OneSignal.User.addTags === 'function') {
+        await OneSignal.User.addTags(tags);
+      }
       console.log("✓ Tags OneSignal mis à jour:", tags);
     } catch (err) {
-      console.warn("⚠️ Erreur mise à jour tags (non bloquante):", err.message);
+      console.warn("⚠️ Erreur mise à jour tags (non bloquante):", err.message || err);
     }
   });
-
-  // Si OneSignal déjà prêt, exécute immédiatemment
-  if (window.OneSignal && window.OneSignal.User) {
-    window.OneSignal.User.addTags(tags).catch(err => {
-      console.warn("⚠️ Erreur mise à jour tags (non bloquante):", err.message);
-    });
-  }
 }
 
 function setNotifStatus(msg, type) {
@@ -165,6 +185,22 @@ function setNotifStatus(msg, type) {
   if (!el) return;
   el.textContent = msg;
   el.className = "notif-status " + (type || "");
+}
+
+async function debugOneSignalStatus() {
+  if (!window.OneSignal) {
+    console.warn("OneSignal non disponible pour debug");
+    return;
+  }
+
+  try {
+    const userId = typeof OneSignal.getUserId === 'function' ? await OneSignal.getUserId() : null;
+    const isEnabled = typeof OneSignal.isPushNotificationsEnabled === 'function' ? await OneSignal.isPushNotificationsEnabled() : null;
+    const tags = typeof OneSignal.getTags === 'function' ? await OneSignal.getTags() : null;
+    console.info("🧾 OneSignal status:", { userId, isEnabled, tags });
+  } catch (err) {
+    console.warn("🧾 OneSignal status error:", err.message || err);
+  }
 }
 
 // ══════════════════════════════════════
@@ -175,10 +211,7 @@ function startApp() {
   const btnCompose = document.getElementById("btn-goto-compose");
   if (!STATE.isAdmin) btnCompose.style.display = "none";
 
-  // Ne pas forcer update de tags si OneSignal non initialisé
-  if (window.OneSignal && window.OneSignal.User) {
-    updateOneSignalTags(STATE.prefs);
-  }
+  updateOneSignalTags(STATE.prefs);
 
   showScreen("feed");
   initFeed();
