@@ -99,6 +99,8 @@ async function setupOneSignalNotifications(pseudo, prefs) {
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     OneSignalDeferred.push(async function(OneSignal) {
       try {
+        console.log("🔔 Initialisation OneSignal pour:", pseudo);
+        
         // 1. Demander la permission
         const permission = await OneSignal.Notifications.requestPermission();
         
@@ -107,6 +109,9 @@ async function setupOneSignalNotifications(pseudo, prefs) {
           resolve(false);
           return;
         }
+
+        // Petit délai pour laisser OneSignal s'initialiser
+        await new Promise(r => setTimeout(r, 500));
 
         // 2. Définir les tags (pseudo + thèmes)
         const tags = { pseudo };
@@ -117,11 +122,11 @@ async function setupOneSignalNotifications(pseudo, prefs) {
         await OneSignal.User.addTags(tags);
         
         setNotifStatus("✓ Notifications activées", "ok");
-        console.log("OneSignal configuré avec tags:", tags);
+        console.log("✅ OneSignal configuré avec tags:", tags);
         resolve(true);
         
       } catch (err) {
-        console.error("Erreur OneSignal:", err);
+        console.error("❌ Erreur OneSignal:", err);
         setNotifStatus("Erreur : " + err.message, "err");
         resolve(false);
       }
@@ -131,20 +136,27 @@ async function setupOneSignalNotifications(pseudo, prefs) {
 
 // ── Mettre à jour les tags OneSignal ──
 function updateOneSignalTags(prefs) {
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  OneSignalDeferred.push(async function(OneSignal) {
-    try {
-      const tags = { pseudo: STATE.pseudo };
-      ALL_THEMES.forEach(t => {
-        tags[t.id] = prefs.includes(t.id) ? "true" : "false";
-      });
+  if (!window.OneSignal) {
+    console.warn("⚠️ OneSignal pas encore disponible");
+    return;
+  }
 
-      await OneSignal.User.addTags(tags);
-      console.log("Tags OneSignal mis à jour:", tags);
-    } catch (err) {
-      console.error("Erreur mise à jour tags:", err);
+  try {
+    const tags = { pseudo: STATE.pseudo };
+    ALL_THEMES.forEach(t => {
+      tags[t.id] = prefs.includes(t.id) ? "true" : "false";
+    });
+
+    // Utiliser la méthode directe si dispo, sinon passer par Deferred
+    if (window.OneSignal && window.OneSignal.User) {
+      window.OneSignal.User.addTags(tags).catch(err => {
+        console.warn("⚠️ Erreur mise à jour tags (non bloquante):", err.message);
+      });
+      console.log("✓ Tags OneSignal mis à jour:", tags);
     }
-  });
+  } catch (err) {
+    console.warn("⚠️ Erreur mise à jour tags:", err.message);
+  }
 }
 
 function setNotifStatus(msg, type) {
@@ -576,7 +588,8 @@ async function sendOneSignalNotificationViaAPI(post) {
   console.log("📢 Envoi notif OneSignal pour:", {
     title: post.title,
     theme: post.theme,
-    themeLabel: themeLabel
+    themeLabel: themeLabel,
+    description: post.description
   });
 
   try {
@@ -585,29 +598,44 @@ async function sendOneSignalNotificationViaAPI(post) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: post.title,
+        description: post.description,
         theme: post.theme,
         themeLabel: themeLabel
       })
     });
 
+    const data = await response.json();
+    
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorMsg = data.error || data.message || response.statusText;
       console.error("❌ Erreur API send-push:", {
         status: response.status,
-        error: errorData
+        error: errorMsg,
+        data: data
       });
-      throw new Error("Erreur API: " + (errorData.error || response.statusText));
+      
+      // Pour les erreurs "no subscribers", ce n'est pas grave
+      if (errorMsg.includes("not subscribed")) {
+        console.warn("⚠️ Aucun abonné pour ce thème - c'est normal au départ");
+        setPublishStatus("⚠️ Post publié (aucun abonné pour ce thème)", "ok");
+        return { success: false, message: "Aucun abonné" };
+      }
+      
+      throw new Error(errorMsg);
     }
 
-    const data = await response.json();
-    console.log("✅ Notification envoyée via OneSignal:", data);
-    setPublishStatus("✓ Notifications envoyées !", "ok");
+    console.log("✅ Notification envoyée via OneSignal:", {
+      id: data.id,
+      recipients: data.recipients
+    });
+    setPublishStatus("✓ Post publié et notifs envoyées !", "ok");
     return data;
     
   } catch(err) {
     console.error("❌ Erreur envoi notification:", err);
     // Ne pas bloquer la publication si les notifications échouent
     console.warn("⚠️ Les notifications n'ont pas pu être envoyées, mais le post est publié");
+    setPublishStatus("✓ Post publié", "ok");
   }
 }
 
