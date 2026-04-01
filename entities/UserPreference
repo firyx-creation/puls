@@ -1,0 +1,29 @@
+{
+  "name": "UserPreference",
+  "type": "object",
+  "properties": {
+    "pseudo": {
+      "type": "string",
+      "description": "User display name"
+    },
+    "themes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Selected theme preferences"
+    },
+    "notifications_enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "setup_complete": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "pseudo"
+  ]
+}
