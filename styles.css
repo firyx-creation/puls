@@ -1,0 +1,12 @@
+:root { --bg: #100b1f; --text: #f6f5ff; --accent: #9e6fff; --accent-2: #ffffff; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: radial-gradient(circle at 20% 20%, #2f1d62 0%, var(--bg) 60%); color: var(--text); }
+body { display: grid; place-items: center; text-align: center; padding: 1rem; }
+.container { max-width: 460px; width: 100%; border: 1px solid rgba(255, 255, 255, .12); padding: 2rem; border-radius: 18px; backdrop-filter: blur(8px); background: rgba(12, 8, 21, .79); }
+.logo-text { margin-bottom: 1.25rem; }
+.logo-text h1 { font-size: 4rem; font-weight: 900; letter-spacing: -0.04em; margin: 0; color: #ffffff; text-transform: lowercase; }
+.logo-text .dot { color: #9e6fff; }
+h2 { font-size: 1.8rem; margin-bottom: .6rem; color: #f8f7ff; }
+p { margin-bottom: 1.35rem; color: #cfd1f4; }
+.btn { display: inline-block; background: linear-gradient(135deg, #a273ff, #6f51ed); color: #fff; font-weight: 700; text-decoration: none; padding: .75rem 1.5rem; border-radius: 999px; box-shadow: 0 10px 25px rgba(108, 67, 224, 0.36); transition: transform .18s ease, box-shadow .18s ease; }
+.btn:hover, .btn:focus-visible { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(108, 67, 224, 0.55); }
